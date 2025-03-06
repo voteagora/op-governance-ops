@@ -155,11 +155,28 @@ process_log() {
 
     # Parse the transaction data
     local function_data=$(parse_function_data "$data" "$target")
-    echo "Function Data: $function_data"
 
     # Calculate ready timestamp
     local ready_timestamp=$((start_timestamp + delay))
-    
+
+    # Check if the proposal is pending, cancelled or executed
+    local proposal_status
+    if [ "$TYPE" == "pending" ]; then
+        proposal_status=$(cast call $RPC_ARGS $TIMELOCK_ADDRESS "isOperationPending(bytes32)(bool)" "$proposal_id")
+    elif [ "$TYPE" == "cancelled" ]; then
+        proposal_status=$(cast call $RPC_ARGS $TIMELOCK_ADDRESS "getTimestamp(bytes32)(uint256)" "$proposal_id")
+        if [ "$proposal_status" == "0" ]; then
+            proposal_status="true"
+        else
+            proposal_status="false"
+        fi
+    elif [ "$TYPE" == "executed" ]; then
+        proposal_status=$(cast call $RPC_ARGS $TIMELOCK_ADDRESS "isOperationDone(bytes32)(bool)" "$proposal_id")
+    fi
+
+    if [ "$proposal_status" != "true" ]; then
+        return
+    fi
     # Print results
     echo "Proposal ID: $proposal_id"
     echo "Transaction Hash: $tx_hash"
@@ -169,6 +186,7 @@ process_log() {
     echo "Transaction Value: $value_dec"
     echo "Proposal Delay: $delay"
     echo "Ready Timestamp: $ready_timestamp"
+    echo "Function Data: $function_data"
     echo "------------------------"
 }
 
