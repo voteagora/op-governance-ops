@@ -58,13 +58,13 @@ CANCELLED_EVENT_SIG="Cancelled(bytes32)"
 CALL_EXECUTED_EVENT_SIG="CallExecuted(bytes32,uint256,address,uint256,bytes)"
 
 # Default block range
-FROM_BLOCK="105235063"
+FROM_BLOCK="128528629"
 TO_BLOCK="latest"
 
 echo "Fetching CallScheduled events..."
 SCHEDULED_LOGS=$(cast logs $RPC_ARGS \
   --from-block $FROM_BLOCK \
-  --to-block 129478791 \
+  --to-block $TO_BLOCK \
   --address $TIMELOCK_ADDRESS \
   "$CALL_SCHEDULED_EVENT_SIG")
 

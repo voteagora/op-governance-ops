@@ -6,6 +6,7 @@ DEFAULT_RPC="https://rpc.ankr.com/optimism"
 TIMELOCK_ADDRESS=$DEFAULT_TIMELOCK
 RPC_ARGS="--rpc-url $DEFAULT_RPC"
 PROPOSAL_ID=""
+PRIVATE_KEY=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -18,8 +19,12 @@ while [[ $# -gt 0 ]]; do
       RPC_ARGS="--rpc-url $2"
       shift 2
       ;;
+    --private-key)
+      PRIVATE_KEY="$2"
+      shift 2
+      ;;
     --help)
-      echo "Usage: $0 [timelock_address] [--proposal <id_or_all>] [--rpc-url <rpc_url>]"
+      echo "Usage: $0 [timelock_address] [--proposal <id_or_all>] [--rpc-url <rpc_url>] [--private-key <key>]"
       echo ""
       echo "Parameters:"
       echo "  timelock_address: The address of the TimelockController contract"
@@ -28,6 +33,8 @@ while [[ $# -gt 0 ]]; do
       echo "                        This parameter is required"
       echo "  --rpc-url <url>: The RPC endpoint URL to use"
       echo "                   (defaults to $DEFAULT_RPC)"
+      echo "  --private-key <key>: Private key starting with 0x to sign and send transaction"
+      echo "                      If not provided, will only output the ABI-encoded calldata"
       exit 0
       ;;
     -*)
@@ -52,74 +59,62 @@ fi
 
 echo "Using timelock address: $TIMELOCK_ADDRESS"
 echo "Using RPC URL: $(echo $RPC_ARGS | sed 's/--rpc-url //')"
+[ -n "$PRIVATE_KEY" ] && echo "Using private key: [redacted]"
 
-# Generate calldata for cancelling a specific proposal
-generate_cancel_calldata() {
+# Function to process a proposal
+process_proposal() {
   local proposal_id=$1
   
-  # Check if proposal exists and is pending
-  op_state=$(cast call $TIMELOCK_ADDRESS "getOperationState(bytes32)(uint8)" $proposal_id $RPC_ARGS)
+  echo "Processing proposal: $proposal_id"
   
-  # 0=Unset, 1=Waiting, 2=Ready, 3=Done
-  if [[ "$op_state" == "0" ]]; then
-    echo "Error: Proposal ID $proposal_id does not exist"
-    return 1
-  elif [[ "$op_state" == "3" ]]; then
-    echo "Error: Proposal ID $proposal_id is already executed"
-    return 1
+  if [ -n "$PRIVATE_KEY" ]; then
+    # If private key is provided, send the transaction
+    cast send $RPC_ARGS $TIMELOCK_ADDRESS "cancel(bytes32)" "$proposal_id" --private-key "$PRIVATE_KEY"
+  else
+    # If no private key, just output the ABI-encoded calldata
+    local calldata=$(cast calldata "cancel(bytes32)" "$proposal_id")
+    echo "ABI-encoded calldata: $calldata"
   fi
-  
-  # Generate calldata for the cancel function
-  local calldata=$(cast calldata "cancel(bytes32)" $proposal_id)
-  
-  echo "Proposal ID: $proposal_id"
-  echo "Operation State: $([ "$op_state" == "1" ] && echo "Waiting" || echo "Ready")"
-  echo "Cancel Calldata: $calldata"
-  echo ""
 }
 
 # Main execution
+echo "Starting cancellation process..."
+echo "------------------------"
 
-# If proposal ID is "all"
-if [[ "$PROPOSAL_ID" == "all" ]]; then
-  echo "Generating calldata to cancel all pending proposals..."
+if [ "$PROPOSAL_ID" == "all" ]; then
+  # Check if the list script exists
+  if [ ! -f "./list-pending-proposals.sh" ]; then
+    echo "Error: list-pending-proposals.sh not found in current directory"
+    exit 1
+  fi
   
-  # Create a temporary file to store proposal IDs
-  PENDING_FILE=$(mktemp)
+  # Make sure the script is executable
+  chmod +x ./list-pending-proposals.sh
   
-  # Use list-pending-proposals.sh to get all pending proposals
-  # Use grep to extract just the proposal IDs
-  # Redirect stderr to /dev/null to hide "Fetching..." messages
-  ./list-timelock-proposals.sh $TIMELOCK_ADDRESS $RPC_ARGS --type pending 2>/dev/null | 
-    grep -A1 "Proposal ID:" | 
-    grep -v "Proposal ID:" | 
-    grep -v "\-\-" | 
-    grep "0x" > $PENDING_FILE
+  # Get all pending proposals
+  echo "Fetching all pending proposals..."
+  proposal_list=$(./list-pending-proposals.sh "$TIMELOCK_ADDRESS" $RPC_ARGS --type pending)
   
-  # Check if we found any pending proposals
-  if [ ! -s "$PENDING_FILE" ]; then
-    echo "No pending proposals found in the timelock."
-    rm -f "$PENDING_FILE" 2>/dev/null
+  # Extract proposal IDs from the output
+  proposal_ids=($(echo "$proposal_list" | grep "Proposal ID:" | sed 's/Proposal ID: //'))
+  
+  if [ ${#proposal_ids[@]} -eq 0 ]; then
+    echo "No pending proposals found"
     exit 0
   fi
   
-  # Generate calldata for each pending proposal
-  echo "Cancel calldata for all pending proposals:"
-  echo "========================================"
+  echo "Found ${#proposal_ids[@]} pending proposals"
+  echo "------------------------"
   
-  while read -r op_id; do
-    # Clean up any whitespace
-    op_id=$(echo "$op_id" | tr -d '[:space:]')
-    if [ ! -z "$op_id" ]; then
-      generate_cancel_calldata $op_id
-    fi
-  done < "$PENDING_FILE"
+  # Process each proposal
+  for id in "${proposal_ids[@]}"; do
+    process_proposal "$id"
+    echo "------------------------"
+  done
   
-  rm -f "$PENDING_FILE" 2>/dev/null
 else
-  # Single proposal cancellation
-  echo "Generating calldata to cancel proposal: $PROPOSAL_ID"
-  echo "=============================================="
-  
-  generate_cancel_calldata $PROPOSAL_ID
+  # Process single specific proposal
+  process_proposal "$PROPOSAL_ID"
 fi
+
+echo "Cancellation process completed"
