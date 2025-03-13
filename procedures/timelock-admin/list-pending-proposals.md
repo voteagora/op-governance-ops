@@ -2,6 +2,13 @@
 
 This script identifies and displays proposals in Optimism's Timelock contract by analyzing historical events and current contract state. It can show pending, cancelled, or executed proposals.
 
+## Features
+
+- Allows fetching proposals by type (pending, cancelled, executed)
+- Decodes event data to extract proposal details
+- Processes CallScheduled, Cancelled, and CallExecuted events
+- For OP token transfers, calculates total token amounts at risk
+
 ## Requirements
 
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) - This script uses Foundry's `cast` tool
@@ -75,11 +82,9 @@ Ready at: Thu Dec 12 23:41:15 CET 2024
 Total pending proposals: 1
 ```
 
-## Viewing Different Types of Proposals
+## Examples
 
-The script can display three different types of proposals:
-
-### Pending Proposals
+### Get list of pending proposals
 
 ```bash
 ./list-timelock-proposals.sh --type pending
@@ -87,7 +92,7 @@ The script can display three different types of proposals:
 
 Shows operations that have been scheduled but not yet executed or cancelled. For each pending proposal, it shows the time remaining until it's ready for execution or indicates if it's already ready.
 
-### Cancelled Proposals
+### Get list of cancelled proposals
 
 ```bash
 ./list-timelock-proposals.sh --type cancelled
@@ -95,7 +100,7 @@ Shows operations that have been scheduled but not yet executed or cancelled. For
 
 Shows operations that were scheduled but later cancelled before execution.
 
-### Executed Proposals
+### Get list of executed proposals
 
 ```bash
 ./list-timelock-proposals.sh --type executed
@@ -110,9 +115,3 @@ The script automatically detects operations that interact with the OP token:
 - It identifies ERC20 transfers with function selector `0xa9059cbb`
 - It decodes the recipient address and transfer amount
 - It displays the amount of OP tokens at risk in a human-readable format
-
-## Limitations
-
-- The script starts checking from block 105235063, which is the deployment block of the Timelock contract.
-- The script cannot decode all types of function calls, but it provides special handling for OP token transfers
-- The default RPC is public, so it might occasionally be slow, unresponsive or rate-limited
